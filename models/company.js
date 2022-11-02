@@ -57,7 +57,6 @@ class Company {
            ORDER BY name`,
 			[ minEmployees, maxEmployees, name ]
 		);
-		console.log(companiesRes);
 		return companiesRes.rows;
 	}
 
