@@ -16,3 +16,6 @@ function sqlForPartialUpdate(dataToUpdate, jsToSql) {
 }
 
 module.exports = { sqlForPartialUpdate };
+
+// let testResult = sqlForPartialUpdate({ firstName: 'Aliya', age: 32 }, { firstName: 'first_name', age: 'age' });
+// console.log(testResult);
