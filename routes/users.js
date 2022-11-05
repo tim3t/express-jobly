@@ -5,7 +5,7 @@
 const jsonschema = require('jsonschema');
 
 const express = require('express');
-const { ensureLoggedIn, ensureIsAdmin } = require('../middleware/auth');
+const { ensureCorrectUserOrAdmin, ensureAdmin } = require('../middleware/auth');
 const { BadRequestError } = require('../expressError');
 const User = require('../models/user');
 const { createToken } = require('../helpers/tokens');
@@ -23,10 +23,10 @@ const router = express.Router();
  * This returns the newly created user and an authentication token for them:
  *  {user: { username, firstName, lastName, email, isAdmin }, token }
  *
- * Authorization required: login
+ * Authorization required: admin
  **/
 
-router.post('/', ensureLoggedIn, ensureIsAdmin, async function(req, res, next) {
+router.post('/', ensureAdmin, async function(req, res, next) {
 	try {
 		const validator = jsonschema.validate(req.body, userNewSchema);
 		if (!validator.valid) {
@@ -46,10 +46,10 @@ router.post('/', ensureLoggedIn, ensureIsAdmin, async function(req, res, next) {
  *
  * Returns list of all users.
  *
- * Authorization required: login
+ * Authorization required: admin
  **/
 
-router.get('/', ensureLoggedIn, ensureIsAdmin, async function(req, res, next) {
+router.get('/', ensureAdmin, async function(req, res, next) {
 	try {
 		const users = await User.findAll();
 		return res.json({ users });
@@ -60,12 +60,13 @@ router.get('/', ensureLoggedIn, ensureIsAdmin, async function(req, res, next) {
 
 /** GET /[username] => { user }
  *
- * Returns { username, firstName, lastName, isAdmin }
+ * Returns { username, firstName, lastName, isAdmin, jobs }
+ *   where jobs is { id, title, companyHandle, companyName, state }
  *
- * Authorization required: login
+ * Authorization required: admin or same user-as-:username
  **/
 
-router.get('/:username', ensureLoggedIn, async function(req, res, next) {
+router.get('/:username', ensureCorrectUserOrAdmin, async function(req, res, next) {
 	try {
 		const user = await User.get(req.params.username);
 		return res.json({ user });
@@ -81,35 +82,50 @@ router.get('/:username', ensureLoggedIn, async function(req, res, next) {
  *
  * Returns { username, firstName, lastName, email, isAdmin }
  *
- * Authorization required: login
+ * Authorization required: admin or same-user-as-:username
  **/
 
-router.patch('/:username', ensureLoggedIn, async function(req, res, next) {
-	if (!ensureLoggedIn || !ensureIsAdmin) {
-		try {
-			const validator = jsonschema.validate(req.body, userUpdateSchema);
-			if (!validator.valid) {
-				const errs = validator.errors.map((e) => e.stack);
-				throw new BadRequestError(errs);
-			}
-
-			const user = await User.update(req.params.username, req.body);
-			return res.json({ user });
-		} catch (err) {
-			return next(err);
+router.patch('/:username', ensureCorrectUserOrAdmin, async function(req, res, next) {
+	try {
+		const validator = jsonschema.validate(req.body, userUpdateSchema);
+		if (!validator.valid) {
+			const errs = validator.errors.map((e) => e.stack);
+			throw new BadRequestError(errs);
 		}
+
+		const user = await User.update(req.params.username, req.body);
+		return res.json({ user });
+	} catch (err) {
+		return next(err);
 	}
 });
 
 /** DELETE /[username]  =>  { deleted: username }
  *
- * Authorization required: login
+ * Authorization required: admin or same-user-as-:username
  **/
 
-router.delete('/:username', ensureLoggedIn, async function(req, res, next) {
+router.delete('/:username', ensureCorrectUserOrAdmin, async function(req, res, next) {
 	try {
 		await User.remove(req.params.username);
 		return res.json({ deleted: req.params.username });
+	} catch (err) {
+		return next(err);
+	}
+});
+
+/** POST /[username]/jobs/[id]  { state } => { application }
+ *
+ * Returns {"applied": jobId}
+ *
+ * Authorization required: admin or same-user-as-:username
+ * */
+
+router.post('/:username/jobs/:id', ensureCorrectUserOrAdmin, async function(req, res, next) {
+	try {
+		const jobId = +req.params.id;
+		await User.applyToJob(req.params.username, jobId);
+		return res.json({ applied: jobId });
 	} catch (err) {
 		return next(err);
 	}
